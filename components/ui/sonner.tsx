@@ -19,6 +19,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       position="top-center"
       richColors
       expand
+      duration={3000}
       offset={{ top: 20 }}
       mobileOffset={{ top: 16, left: 14, right: 14 }}
       className="toaster group"

@@ -61,3 +61,13 @@
 [data-next-badge] {
   display: none !important;
 }
+
+.google-login-button,
+.google-login-button > div,
+.google-login-button iframe {
+  max-width: 100% !important;
+}
+
+.google-login-button iframe {
+  display: block !important;
+}
