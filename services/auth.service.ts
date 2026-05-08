@@ -16,6 +16,7 @@ export const login = (data: ILoginRequest) =>
 export const googleLogin = (data: IGoogleLoginRequest) =>
   api.post<IAuthResponse>("/auth/google", data);
 export const fetchUser = () => api.get<IAuthResponse>("/auth/me");
+export const logout = () => api.post<IMessageResponse>("/auth/logout");
 export const forgotPassword = (data: IForgotPasswordRequest) =>
   api.post<IMessageResponse>("/auth/forgot-password", data);
 export const resetPassword = (data: IResetPasswordRequest) =>

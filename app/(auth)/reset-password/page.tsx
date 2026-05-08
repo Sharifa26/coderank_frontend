@@ -15,7 +15,13 @@ import { resetPassword } from "@/services/auth.service";
 
 const formSchema = z.object({
   token: z.string().min(1, "Reset token is required"),
-  newPassword: z.string().min(6, "Password must be at least 6 characters"),
+  newPassword: z
+    .string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/,
+      "Use uppercase, lowercase, number, and special character",
+    ),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -143,7 +149,10 @@ export default function ResetPasswordPage() {
 
       <p className="mt-5 text-center text-sm text-muted-foreground">
         Back to{" "}
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link
+          href="/login"
+          className="font-medium text-primary hover:underline"
+        >
           Login
         </Link>
       </p>

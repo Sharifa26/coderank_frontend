@@ -79,7 +79,7 @@ export default function LoginPage() {
   const onSubmit = async (data: FormData) => {
     try {
       const response = await login(data);
-      authLogin(response.data.data.user, response.data.data.token!);
+      authLogin(response.data.data.user);
       toast.success("Login successful", {
         description: "Welcome back!",
       });
@@ -107,7 +107,7 @@ export default function LoginPage() {
           idToken: credentialResponse.credential,
         });
 
-        authLogin(response.data.data.user, response.data.data.token!);
+        authLogin(response.data.data.user);
         toast.success("Google login successful", {
           description: "Welcome back!",
         });

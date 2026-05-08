@@ -1,29 +1,28 @@
 import { create } from "zustand";
-import { createJSONStorage, persist } from "zustand/middleware";
 import { IUser } from "@/types";
 
 interface AuthState {
   user: IUser | null;
-  token: string | null;
   isAuthenticated: boolean;
-  login: (user: IUser, token: string) => void;
+  hasCheckedAuth: boolean;
+  login: (user: IUser) => void;
   logout: () => void;
   setUser: (user: IUser | null) => void;
+  setHasCheckedAuth: (value: boolean) => void;
 }
 
-export const useAuthStore = create<AuthState>()(
-  persist(
-    (set) => ({
-      user: null,
-      token: null,
-      isAuthenticated: false,
-      login: (user, token) => set({ user, token, isAuthenticated: true }),
-      logout: () => set({ user: null, token: null, isAuthenticated: false }),
-      setUser: (user) => set({ user }),
+export const useAuthStore = create<AuthState>()((set) => ({
+  user: null,
+  isAuthenticated: false,
+  hasCheckedAuth: false,
+  login: (user) => set({ user, isAuthenticated: true, hasCheckedAuth: true }),
+  logout: () =>
+    set({ user: null, isAuthenticated: false, hasCheckedAuth: true }),
+  setUser: (user) =>
+    set({
+      user,
+      isAuthenticated: Boolean(user),
+      hasCheckedAuth: true,
     }),
-    {
-      name: "auth-storage", // name of the item in the storage (must be unique)
-      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
-    },
-  ),
-);
+  setHasCheckedAuth: (value) => set({ hasCheckedAuth: value }),
+}));

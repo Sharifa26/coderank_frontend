@@ -55,12 +55,22 @@ export interface ICodeSnippet {
   stdin: string;
   stdout: string;
   stderr: string;
-  status: "pending" | "completed" | "error";
+  status: ExecutionStatus;
   isPublic: boolean;
   shareId?: string;
   createdAt: string;
   updatedAt: string;
 }
+
+export type ExecutionStatus =
+  | "idle"
+  | "pending"
+  | "compiling"
+  | "running"
+  | "waiting_for_input"
+  | "completed"
+  | "error"
+  | "timeout";
 
 export interface ICodeHistoryResponse {
   success: boolean;
@@ -81,8 +91,32 @@ export interface IRunCodeResponse {
     error: string;
     exitCode: number;
     executionTime: string;
-    status: "completed" | "error" | "timeout";
+    status: Exclude<
+      ExecutionStatus,
+      "idle" | "pending" | "compiling" | "running" | "waiting_for_input"
+    >;
   };
+}
+
+export interface IExecutionStatusPayload {
+  executionId: string;
+  status: Exclude<ExecutionStatus, "idle" | "pending">;
+  message?: string;
+}
+
+export interface IExecutionOutputPayload {
+  executionId: string;
+  stream: "stdout" | "stderr";
+  data: string;
+}
+
+export interface IExecutionCompletePayload {
+  executionId: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  executionTime: number;
+  status: "completed" | "error" | "timeout";
 }
 
 export interface IOptimizeResponse {

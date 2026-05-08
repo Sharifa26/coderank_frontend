@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { languageDetails, SupportedLanguage } from "@/lib/default-code";
 import { deleteCode, getHistory } from "@/services/code.service";
+import { logout as logoutRequest } from "@/services/auth.service";
 import { useAuthStore } from "@/store/auth.store";
 import { ICodeSnippet } from "@/types";
 import { toast } from "sonner";
@@ -77,7 +78,8 @@ export default function ProfilePage() {
     pageStartIndex + PAGE_SIZE,
   );
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutRequest().catch(() => {});
     logout();
     router.push("/login");
   };
@@ -111,10 +113,10 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="h-screen overflow-hidden bg-[#020813] text-white">
+    <div className="min-h-screen overflow-x-hidden bg-[#020813] text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_68%_26%,rgba(35,82,124,0.16),transparent_34%),linear-gradient(180deg,#020813_0%,#020711_48%,#040b16_100%)]" />
-      <div className="relative flex h-screen flex-col px-5 py-3">
-        <header className="flex items-center justify-between pb-3">
+      <div className="relative flex min-h-screen flex-col px-3 py-3 sm:px-5 lg:h-screen">
+        <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
           <button
             type="button"
             className="flex items-center gap-2.5 text-left"
@@ -129,10 +131,10 @@ export default function ProfilePage() {
               priority
             />
             <div>
-              <h1 className="text-2xl font-bold leading-none tracking-normal">
+              <h1 className="text-xl font-bold leading-none tracking-normal sm:text-2xl">
                 Code<span className="text-[#824cff]">Nova</span>
               </h1>
-              <p className="mt-1 text-sm text-[#a9afc2]">
+              <p className="mt-1 text-xs text-[#a9afc2] sm:text-sm">
                 Code. Compile. Conquer.
               </p>
             </div>
@@ -151,7 +153,9 @@ export default function ProfilePage() {
                   className="h-10 w-10"
                   fallbackClassName="text-base"
                 />
-                <span className="text-lg font-medium">{username}</span>
+                <span className="hidden max-w-40 truncate text-lg font-medium sm:inline">
+                  {username}
+                </span>
                 <ChevronDown className="h-4 w-4 text-[#8995ad]" />
               </button>
             </DropdownMenuTrigger>
@@ -178,23 +182,27 @@ export default function ProfilePage() {
         </header>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
-          <aside className="flex min-h-0 flex-col rounded-lg border border-[#203149] bg-[#06101c]/68 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <aside className="flex min-h-0 flex-col rounded-lg border border-[#203149] bg-[#06101c]/68 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-5">
             <div className="flex flex-1 flex-col items-center justify-center text-center">
               <div className="relative">
                 <UserAvatar
                   username={username}
                   avatar={user?.avatar}
-                  className="h-36 w-36 border-2 border-[#7149ff]"
-                  fallbackClassName="text-5xl"
+                  className="h-24 w-24 border-2 border-[#7149ff] sm:h-36 sm:w-36"
+                  fallbackClassName="text-3xl sm:text-5xl"
                 />
               </div>
-              <h2 className="mt-5 text-2xl font-bold">{username}</h2>
-              <p className="mt-3 text-base text-[#c5ccda]">{email}</p>
+              <h2 className="mt-4 max-w-full truncate text-xl font-bold sm:mt-5 sm:text-2xl">
+                {username}
+              </h2>
+              <p className="mt-2 max-w-full truncate text-sm text-[#c5ccda] sm:mt-3 sm:text-base">
+                {email}
+              </p>
             </div>
 
             <Button
               variant="outline"
-              className="h-12 w-full border-red-500/30 bg-red-950/10 text-base font-semibold text-[#ff695f] hover:bg-red-950/30 hover:text-[#ff7c74]"
+              className="mt-4 h-11 w-full border-red-500/30 bg-red-950/10 text-sm font-semibold text-[#ff695f] hover:bg-red-950/30 hover:text-[#ff7c74] sm:h-12 sm:text-base lg:mt-0"
               onClick={handleLogout}
             >
               <LogOut className="mr-3 h-5 w-5" />
@@ -202,14 +210,14 @@ export default function ProfilePage() {
             </Button>
           </aside>
 
-          <main className="flex min-h-0 flex-col rounded-lg border border-[#203149] bg-[#06101c]/68 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+          <main className="flex min-h-0 flex-col rounded-lg border border-[#203149] bg-[#06101c]/68 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-4">
             <div className="mb-3 flex items-center gap-3">
               <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#4d32bc] text-white shadow-[0_12px_32px_rgba(76,50,188,0.35)]">
                 <Save className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="text-xl font-bold">Saved Codes</h2>
-                <p className="mt-0.5 text-sm text-[#b6bfd0]">
+                <h2 className="text-lg font-bold sm:text-xl">Saved Codes</h2>
+                <p className="mt-0.5 text-xs text-[#b6bfd0] sm:text-sm">
                   All your saved code snippets
                 </p>
               </div>
@@ -225,7 +233,7 @@ export default function ProfilePage() {
               </div>
             ) : (
               <>
-                <div className="grid min-h-0 flex-1 grid-rows-5 gap-2 overflow-hidden">
+                <div className="grid min-h-0 flex-1 auto-rows-min gap-2 overflow-visible lg:grid-rows-5 lg:overflow-hidden">
                   {paginatedSnippets.map((snippet) => {
                     const icon = getLanguageIcon(snippet.language);
                     const languageName =
@@ -234,7 +242,7 @@ export default function ProfilePage() {
                     return (
                       <article
                         key={snippet._id}
-                        className="grid min-h-0 grid-cols-1 items-center gap-2 rounded-lg border border-[#1d3045] bg-[#07111e]/58 px-4 py-2 xl:grid-cols-[52px_1fr_auto]"
+                        className="grid min-h-0 grid-cols-[42px_1fr] items-center gap-3 rounded-lg border border-[#1d3045] bg-[#07111e]/58 px-3 py-3 xl:grid-cols-[52px_1fr_auto] xl:py-2"
                       >
                         <div className="flex h-10 w-10 items-center justify-center">
                           {icon ? (
@@ -265,25 +273,24 @@ export default function ProfilePage() {
                           </Badge>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-2 xl:gap-3">
-                          <div className="min-w-36 text-left text-xs text-[#b6bfd0] xl:text-right">
-                            {format(
-                              new Date(snippet.updatedAt),
-                              "MMM d, yyyy",
-                            )}
+                        <div className="col-span-2 flex flex-wrap items-center gap-2 xl:col-span-1 xl:gap-3">
+                          <div className="w-full text-left text-xs text-[#b6bfd0] sm:w-auto sm:min-w-36 xl:text-right">
+                            {format(new Date(snippet.updatedAt), "MMM d, yyyy")}
                             <span className="px-2 text-[#738098]">&bull;</span>
                             {format(new Date(snippet.updatedAt), "hh:mm a")}
                           </div>
                           <Button
-                            className="h-8 min-w-36 bg-[#4d32bc] px-3 text-xs font-semibold text-white hover:bg-[#5c3fde]"
-                            onClick={() => router.push("/dashboard")}
+                            className="h-8 flex-1 bg-[#4d32bc] px-3 text-xs font-semibold text-white hover:bg-[#5c3fde] sm:min-w-36 sm:flex-none"
+                            onClick={() =>
+                              router.push(`/dashboard?snippetId=${snippet._id}`)
+                            }
                           >
                             <Code2 className="mr-1.5 h-3.5 w-3.5" />
                             Open in Editor
                           </Button>
                           <Button
                             variant="outline"
-                            className="h-8 border-red-500/30 bg-red-950/10 px-3 text-xs font-semibold text-[#ff695f] hover:bg-red-950/30 hover:text-[#ff7c74]"
+                            className="h-8 flex-1 border-red-500/30 bg-red-950/10 px-3 text-xs font-semibold text-[#ff695f] hover:bg-red-950/30 hover:text-[#ff7c74] sm:flex-none"
                             onClick={() => handleDelete(snippet._id)}
                             disabled={deletingId === snippet._id}
                             aria-label={`Delete ${snippet.title}`}
@@ -299,11 +306,11 @@ export default function ProfilePage() {
                   })}
                 </div>
 
-                <div className="mt-3 flex items-center justify-between border-t border-[#1d3045] pt-3 text-xs text-[#b6bfd0]">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-[#1d3045] pt-3 text-xs text-[#b6bfd0]">
                   <span>
                     Page {visiblePage} of {totalPages}
                   </span>
-                  <div className="flex items-center gap-2">
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center">
                     <Button
                       variant="outline"
                       className="h-8 border-[#223550] bg-[#101b2d] px-3 text-xs text-white hover:bg-[#16243a]"
@@ -319,9 +326,7 @@ export default function ProfilePage() {
                       variant="outline"
                       className="h-8 border-[#223550] bg-[#101b2d] px-3 text-xs text-white hover:bg-[#16243a]"
                       onClick={() =>
-                        setCurrentPage((page) =>
-                          Math.min(totalPages, page + 1),
-                        )
+                        setCurrentPage((page) => Math.min(totalPages, page + 1))
                       }
                       disabled={currentPage === totalPages}
                     >

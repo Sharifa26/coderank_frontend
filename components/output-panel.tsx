@@ -1,39 +1,87 @@
+"use client";
+
 import { Button } from "./ui/button";
-import { Textarea } from "./ui/textarea";
 import { Trash2 } from "lucide-react";
-import { IRunCodeResponse } from "@/types";
+import { ExecutionStatus, IRunCodeResponse } from "@/types";
+import { FormEvent, useEffect, useRef, useState } from "react";
 
 interface OutputPanelProps {
   output: IRunCodeResponse["data"] | null;
-  stdin: string;
   isRunning: boolean;
-  onStdinChange: (value: string) => void;
+  executionStatus: ExecutionStatus;
+  terminalOutput: string;
+  onSendInput: (value: string) => void;
   onClear: () => void;
 }
 
 const OutputPanel = ({
   output,
-  stdin,
   isRunning,
-  onStdinChange,
+  executionStatus,
+  terminalOutput,
+  onSendInput,
   onClear,
 }: OutputPanelProps) => {
+  const [liveInput, setLiveInput] = useState("");
+  const liveInputRef = useRef<HTMLInputElement>(null);
   const isSuccess =
     isRunning || (output?.status !== "error" && output?.status !== "timeout");
+  const canSendInput =
+    executionStatus === "running" || executionStatus === "waiting_for_input";
 
-  const statusLabel = isRunning ? "Running" : isSuccess ? "Success" : "Error";
+  const statusLabel = isRunning
+    ? executionStatus
+        .split("_")
+        .map((word) => word[0]?.toUpperCase() + word.slice(1))
+        .join(" ")
+    : isSuccess
+      ? "Success"
+      : "Error";
 
-  const displayOutput = output?.error || output?.output || "";
+  const displayOutput = terminalOutput || output?.error || output?.output || "";
+
+  useEffect(() => {
+    if (canSendInput) {
+      liveInputRef.current?.focus();
+    }
+  }, [canSendInput, displayOutput]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!liveInput.trim() || !canSendInput) {
+      return;
+    }
+
+    onSendInput(`${liveInput}\n`);
+    setLiveInput("");
+  };
+
+  const terminalInput = canSendInput ? (
+    <form
+      onSubmit={handleSubmit}
+      className="inline-flex min-w-[12ch] align-baseline"
+    >
+      <input
+        ref={liveInputRef}
+        value={liveInput}
+        onChange={(event) => setLiveInput(event.target.value)}
+        aria-label="Live program input"
+        className="min-w-[12ch] flex-1 bg-transparent font-mono text-sm text-white caret-[#00f060] outline-none"
+        autoComplete="off"
+        spellCheck={false}
+      />
+    </form>
+  ) : null;
 
   return (
-    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-[#1f3045] bg-[#030b15]/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
-      <div className="flex h-12 items-center border-b border-[#1b2a3c] px-5">
+    <div className="flex h-full min-h-[320px] flex-col overflow-hidden rounded-lg border border-[#1f3045] bg-[#030b15]/78 shadow-[inset_0_1px_0_rgba(255,255,255,0.03)]">
+      <div className="flex h-12 items-center border-b border-[#1b2a3c] px-4 sm:px-5">
         <h3 className="text-lg font-semibold text-white">Output</h3>
       </div>
 
-      {(output || isRunning) && (
-        <div className="flex h-14 items-center justify-between border-b border-[#1b2a3c] px-5">
-          <div className="flex items-center gap-4">
+      {(output || isRunning || terminalOutput) && (
+        <div className="flex min-h-14 flex-wrap items-center justify-between gap-2 border-b border-[#1b2a3c] px-4 py-2 sm:px-5">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <span
               className={`rounded-md px-2.5 py-1 text-sm ${
                 isSuccess
@@ -44,7 +92,7 @@ const OutputPanel = ({
               {statusLabel}
             </span>
 
-            <span className="text-sm text-[#909ab1]">
+            <span className="truncate text-sm text-[#909ab1]">
               {output?.executionTime || "Running"}
             </span>
           </div>
@@ -60,42 +108,28 @@ const OutputPanel = ({
         </div>
       )}
 
-      <div className="flex-grow overflow-y-auto px-5 py-5 font-mono text-sm leading-6 text-white">
-        {output && (
-          <pre
+      <div
+        className="flex-grow overflow-auto px-4 py-4 font-mono text-sm leading-6 text-white sm:px-5 sm:py-5"
+        onClick={() => liveInputRef.current?.focus()}
+      >
+        {(displayOutput || terminalInput) && (
+          <div
             className={`whitespace-pre-wrap ${
-              output.error ? "text-red-300" : "text-white"
+              output?.error && !terminalOutput ? "text-red-300" : "text-white"
             }`}
           >
             {displayOutput}
-          </pre>
+            {terminalInput}
+          </div>
         )}
 
-        {!output && isRunning && (
-          <p className="text-[#94a0b8]">Running code...</p>
+        {!displayOutput && isRunning && !terminalInput && (
+          <p className="text-[#94a0b8]">Starting execution...</p>
         )}
 
-        {!output && !isRunning && (
+        {!displayOutput && !isRunning && (
           <p className="text-[#647089]">Run your code to see output.</p>
         )}
-
-      </div>
-
-      <div className="border-t border-[#1b2a3c] px-5 py-4">
-        <label
-          htmlFor="program-stdin"
-          className="mb-2 block text-sm font-medium text-[#a9afc2]"
-        >
-          Input
-        </label>
-        <Textarea
-          id="program-stdin"
-          value={stdin}
-          onChange={(event) => onStdinChange(event.target.value)}
-          placeholder="Enter program input here"
-          disabled={isRunning}
-          className="min-h-24 resize-none border-[#1d3045] bg-[#07111e]/60 font-mono text-sm text-white placeholder:text-[#647089]"
-        />
       </div>
     </div>
   );

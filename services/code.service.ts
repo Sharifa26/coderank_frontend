@@ -4,7 +4,6 @@ import {
   ICodeSnippet,
   IMessageResponse,
   IOptimizeResponse,
-  IRunCodeResponse,
 } from "@/types";
 
 interface RunCodePayload {
@@ -39,12 +38,11 @@ interface SharedCodeResponse {
   };
 }
 
-export const runCode = (data: RunCodePayload) =>
-  api.post<IRunCodeResponse>("/code/run", data);
 export const saveCode = (data: SaveCodePayload) =>
   api.post<{ data: { snippet: ICodeSnippet } }>("/code/save", data);
 export const getHistory = () => api.get<ICodeHistoryResponse>("/history");
-export const getCodeById = (id: string) => api.get(`/code/${id}`);
+export const getCodeById = (id: string) =>
+  api.get<{ data: { snippet: ICodeSnippet } }>(`/code/${id}`);
 export const deleteCode = (id: string) =>
   api.delete<IMessageResponse>(`/code/delete/${id}`);
 export const shareCode = (codeId: string) =>

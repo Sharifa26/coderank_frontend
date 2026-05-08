@@ -4,21 +4,38 @@ import { useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
 import Header from "@/components/header";
+import { fetchUser } from "@/services/auth.service";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated } = useAuthStore();
+  const { hasCheckedAuth, isAuthenticated, setHasCheckedAuth, setUser } =
+    useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    // This effect runs on the client-side after hydration
-    if (!isAuthenticated) {
+    const hydrateSession = async () => {
+      if (isAuthenticated || hasCheckedAuth) {
+        return;
+      }
+
+      try {
+        const response = await fetchUser();
+        setUser(response.data.data.user);
+      } catch {
+        setHasCheckedAuth(true);
+      }
+    };
+
+    hydrateSession();
+  }, [hasCheckedAuth, isAuthenticated, setHasCheckedAuth, setUser]);
+
+  useEffect(() => {
+    if (hasCheckedAuth && !isAuthenticated) {
       router.replace("/login");
     }
-  }, [isAuthenticated, router]);
+  }, [hasCheckedAuth, isAuthenticated, router]);
 
-  if (!isAuthenticated) {
-    // You can replace this with a beautiful loading spinner component
+  if (!hasCheckedAuth || !isAuthenticated) {
     return (
       <div className="flex h-screen items-center justify-center">
         Loading...

@@ -1,12 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  Code,
-  LogOut,
-  LayoutDashboard,
-  History,
-} from "lucide-react";
+import { Code, LogOut, LayoutDashboard, History } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -19,12 +14,14 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuthStore } from "@/store/auth.store";
 import UserAvatar from "@/components/user-avatar";
+import { logout as logoutRequest } from "@/services/auth.service";
 
 export default function Header() {
   const { user, logout } = useAuthStore();
   const router = useRouter();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await logoutRequest().catch(() => {});
     logout();
     router.push("/login");
   };

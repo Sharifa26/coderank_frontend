@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -40,13 +40,20 @@ import {
 import AiOptimizerPanel from "@/components/ai-optimizer-panel";
 import OutputPanel from "@/components/output-panel";
 import {
+  getCodeById,
   optimizeCode,
-  runCode,
   saveCode,
   shareCode,
 } from "@/services/code.service";
 import { toast } from "sonner";
-import { IRunCodeResponse, IOptimizeResponse } from "@/types";
+import {
+  ExecutionStatus,
+  IExecutionCompletePayload,
+  IExecutionOutputPayload,
+  IExecutionStatusPayload,
+  IRunCodeResponse,
+  IOptimizeResponse,
+} from "@/types";
 import { useAuthStore } from "@/store/auth.store";
 import {
   languageDetails,
@@ -54,6 +61,7 @@ import {
   SupportedLanguage,
 } from "@/lib/default-code";
 import UserAvatar from "@/components/user-avatar";
+import { socket } from "@/lib/socket";
 
 // Dynamically import the CodeEditor to avoid SSR issues with Monaco
 const CodeEditor = dynamic(() => import("@/components/code-editor"), {
@@ -75,16 +83,33 @@ const getPublicShareUrl = (
   return `${window.location.origin}/share/${shareId}`;
 };
 
+const EXECUTION_EVENTS = {
+  START: "execution:start",
+  STDIN: "execution:stdin",
+  STOP: "execution:stop",
+  STATUS: "execution:status",
+  OUTPUT: "execution:output",
+  COMPLETE: "execution:complete",
+  ERROR: "execution:error",
+} as const;
+
 export default function DashboardPage() {
-  const { user } = useAuthStore();
-  console.log("User in Dashboard:", user);
+  const { user, isAuthenticated } = useAuthStore();
   const router = useRouter();
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const [workspaceElement, setWorkspaceElement] =
+    useState<HTMLDivElement | null>(null);
+  const stdoutRef = useRef("");
+  const stderrRef = useRef("");
+  const activeExecutionRef = useRef(false);
   const [code, setCode] = useState(languageDetails.python.defaultCode);
   const [language, setLanguage] = useState<SupportedLanguage>("python");
-  const [stdin, setStdin] = useState("");
   const [lastStdin, setLastStdin] = useState("");
   const [output, setOutput] = useState<IRunCodeResponse["data"] | null>(null);
+  const [terminalOutput, setTerminalOutput] = useState("");
+  const [executionStatus, setExecutionStatus] =
+    useState<ExecutionStatus>("idle");
+  const [executionId, setExecutionId] = useState<string | null>(null);
   const [savedCodeId, setSavedCodeId] = useState<string | null>(null);
   const [saveTitle, setSaveTitle] = useState("Untitled");
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
@@ -101,28 +126,101 @@ export default function DashboardPage() {
   const [isRunning, setIsRunning] = useState(false);
   const [isOptimizing, setIsOptimizing] = useState(false);
 
-  const handleRun = async () => {
-    setOutput(null);
-    setIsRunning(true);
-    setLastStdin(stdin);
+  const setWorkspaceRef = useCallback((node: HTMLDivElement | null) => {
+    workspaceRef.current = node;
+    setWorkspaceElement(node);
+  }, []);
 
-    try {
-      const response = await runCode({ language, code, stdin });
-      setOutput(response.data.data);
-    } catch (error: unknown) {
-      toast.error("Execution Failed", {
-        description: getErrorMessage(error),
-      });
-      setOutput({
-        output: "",
-        error: getErrorMessage(error),
-        exitCode: 1,
-        executionTime: "0ms",
-        status: "error",
-      });
-    } finally {
-      setIsRunning(false);
+  useEffect(() => {
+    const snippetId = new URLSearchParams(window.location.search).get(
+      "snippetId",
+    );
+
+    if (!snippetId) {
+      return;
     }
+
+    const loadSnippet = async () => {
+      try {
+        const response = await getCodeById(snippetId);
+        const snippet = response.data.data.snippet;
+        const snippetLanguage = snippet.language as SupportedLanguage;
+
+        if (snippetLanguage in languageDetails) {
+          setLanguage(snippetLanguage);
+        }
+
+        setCode(snippet.code);
+        setLastStdin(snippet.stdin || "");
+        setOutput(
+          snippet.stdout || snippet.stderr
+            ? {
+                output: snippet.stdout || "",
+                error: snippet.stderr || "",
+                exitCode: 0,
+                executionTime: "",
+                status:
+                  snippet.status === "error" || snippet.status === "timeout"
+                    ? snippet.status
+                    : "completed",
+              }
+            : null,
+        );
+        setTerminalOutput(snippet.stdout || snippet.stderr || "");
+        setExecutionStatus("idle");
+        setSavedCodeId(snippet._id);
+      } catch (error: unknown) {
+        toast.error("Unable to open saved code", {
+          description: getErrorMessage(error),
+        });
+      }
+    };
+
+    loadSnippet();
+  }, []);
+
+  const handleRun = () => {
+    if (!isAuthenticated) {
+      toast.error("Login required", {
+        description: "Please login before running code.",
+      });
+      return;
+    }
+
+    setOutput(null);
+    setTerminalOutput("");
+    setExecutionStatus("pending");
+    setExecutionId(null);
+    setIsRunning(true);
+    setLastStdin("");
+    stdoutRef.current = "";
+    stderrRef.current = "";
+    activeExecutionRef.current = true;
+
+    const startExecution = () => {
+      socket.emit(EXECUTION_EVENTS.START, { language, code });
+    };
+
+    if (socket.connected) {
+      startExecution();
+      return;
+    }
+
+    socket.once("connect", startExecution);
+    socket.connect();
+  };
+
+  const handleSendInput = (value: string) => {
+    if (!executionId) {
+      return;
+    }
+
+    setTerminalOutput((current) => `${current}${value}`);
+    setLastStdin((current) => `${current}${value}`);
+    socket.emit(EXECUTION_EVENTS.STDIN, {
+      executionId,
+      data: value,
+    });
   };
 
   const handleOptimize = async () => {
@@ -146,6 +244,8 @@ export default function DashboardPage() {
     setLanguage(nextLanguage);
     setCode(languageDetails[nextLanguage].defaultCode);
     setOutput(null);
+    setTerminalOutput("");
+    setExecutionStatus("idle");
     setLastStdin("");
     setSavedCodeId(null);
   };
@@ -243,6 +343,83 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    const handleStatus = (payload: IExecutionStatusPayload) => {
+      setExecutionId(payload.executionId);
+      setExecutionStatus(payload.status);
+    };
+
+    const handleOutput = (payload: IExecutionOutputPayload) => {
+      if (payload.stream === "stdout") {
+        stdoutRef.current += payload.data;
+      } else {
+        stderrRef.current += payload.data;
+      }
+
+      setTerminalOutput((current) => `${current}${payload.data}`);
+    };
+
+    const handleComplete = (payload: IExecutionCompletePayload) => {
+      activeExecutionRef.current = false;
+      setExecutionId(null);
+      setExecutionStatus(payload.status);
+      setIsRunning(false);
+      setOutput({
+        output: payload.stdout || stdoutRef.current,
+        error: payload.stderr || stderrRef.current,
+        exitCode: payload.exitCode,
+        executionTime: `${payload.executionTime}ms`,
+        status: payload.status,
+      });
+    };
+
+    const handleError = (payload: { message?: string }) => {
+      const message = payload.message || "Execution failed";
+      activeExecutionRef.current = false;
+      setExecutionId(null);
+      setExecutionStatus("error");
+      setIsRunning(false);
+      setOutput({
+        output: stdoutRef.current,
+        error: message,
+        exitCode: 1,
+        executionTime: "0ms",
+        status: "error",
+      });
+      toast.error("Execution Failed", {
+        description: message,
+      });
+    };
+
+    const handleConnectError = (error: Error) => {
+      activeExecutionRef.current = false;
+      setExecutionId(null);
+      setExecutionStatus("error");
+      setIsRunning(false);
+      toast.error("Execution connection failed", {
+        description: error.message,
+      });
+    };
+
+    socket.on(EXECUTION_EVENTS.STATUS, handleStatus);
+    socket.on(EXECUTION_EVENTS.OUTPUT, handleOutput);
+    socket.on(EXECUTION_EVENTS.COMPLETE, handleComplete);
+    socket.on(EXECUTION_EVENTS.ERROR, handleError);
+    socket.on("connect_error", handleConnectError);
+
+    return () => {
+      if (activeExecutionRef.current) {
+        socket.emit(EXECUTION_EVENTS.STOP);
+      }
+
+      socket.off(EXECUTION_EVENTS.STATUS, handleStatus);
+      socket.off(EXECUTION_EVENTS.OUTPUT, handleOutput);
+      socket.off(EXECUTION_EVENTS.COMPLETE, handleComplete);
+      socket.off(EXECUTION_EVENTS.ERROR, handleError);
+      socket.off("connect_error", handleConnectError);
+    };
+  }, []);
+
+  useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(document.fullscreenElement === workspaceRef.current);
     };
@@ -259,12 +436,12 @@ export default function DashboardPage() {
 
   return (
     <div
-      ref={workspaceRef}
-      className="min-h-screen overflow-hidden bg-[#020813] text-white"
+      ref={setWorkspaceRef}
+      className="min-h-screen overflow-x-hidden bg-[#020813] text-white"
     >
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(20,60,98,0.16),transparent_38%),linear-gradient(180deg,#020813_0%,#020711_48%,#040b16_100%)]" />
-      <div className="relative flex h-screen flex-col px-5 py-3">
-        <header className="flex items-center justify-between pb-3">
+      <div className="relative flex min-h-screen flex-col px-3 py-3 sm:px-5 lg:h-screen">
+        <header className="flex flex-wrap items-center justify-between gap-3 pb-3">
           <div className="flex items-center gap-2.5">
             <Image
               src="/logo.png"
@@ -275,10 +452,10 @@ export default function DashboardPage() {
               className="h-10 w-10 object-contain"
             />
             <div>
-              <h1 className="text-2xl font-bold leading-none tracking-normal">
+              <h1 className="text-xl font-bold leading-none tracking-normal sm:text-2xl">
                 Code<span className="text-[#824cff]">Nova</span>
               </h1>
-              <p className="mt-1 text-sm text-[#a9afc2]">
+              <p className="mt-1 text-xs text-[#a9afc2] sm:text-sm">
                 Code. Compile. Conquer.
               </p>
             </div>
@@ -297,7 +474,9 @@ export default function DashboardPage() {
                   className="h-10 w-10"
                   fallbackClassName="text-base"
                 />
-                <span className="text-lg font-medium">{username}</span>
+                <span className="hidden max-w-40 truncate text-lg font-medium sm:inline">
+                  {username}
+                </span>
                 <ChevronDown className="h-4 w-4 text-[#8995ad]" />
               </button>
             </DropdownMenuTrigger>
@@ -323,16 +502,17 @@ export default function DashboardPage() {
           </DropdownMenu>
         </header>
 
-        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-[#203149] bg-[#06101c]/68 p-3 shadow-[0_24px_90px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.03)]">
-          <div className="mb-3 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
+        <section className="flex min-h-0 flex-1 flex-col rounded-xl border border-[#203149] bg-[#06101c]/68 p-2 shadow-[0_24px_90px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(255,255,255,0.03)] sm:p-3">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
               <Select value={language} onValueChange={handleLanguageChange}>
-                <SelectTrigger className="h-9 w-[190px] rounded-lg border-[#223550] bg-[#07111e]/80 px-3 text-sm text-white shadow-none">
+                <SelectTrigger className="h-9 w-full rounded-lg border-[#223550] bg-[#07111e]/80 px-3 text-sm text-white shadow-none sm:w-[190px]">
                   <SelectValue placeholder="Select Language" />
                 </SelectTrigger>
                 <SelectContent
                   align="start"
                   position="popper"
+                  portalContainer={workspaceElement}
                   className="z-[60] min-w-[200px] border border-[#223550] bg-[#050d18] p-1 text-white"
                 >
                   {languages.map((lang) => (
@@ -356,8 +536,8 @@ export default function DashboardPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <div className="flex h-9 w-36 items-center justify-between rounded-lg border border-[#223550] bg-[#07111e]/80 px-4 text-sm">
-                <span>{activeLanguage.fileName}</span>
+              <div className="flex h-9 min-w-0 flex-1 items-center justify-between rounded-lg border border-[#223550] bg-[#07111e]/80 px-3 text-sm sm:w-36 sm:flex-none sm:px-4">
+                <span className="truncate">{activeLanguage.fileName}</span>
                 <span className="h-2.5 w-2.5 rounded-full bg-[#784cff]" />
               </div>
               <TooltipProvider>
@@ -365,7 +545,7 @@ export default function DashboardPage() {
                   <TooltipTrigger asChild>
                     <Button
                       variant={isAiPanelOpen ? "secondary" : "outline"}
-                      className="h-9 rounded-lg border-[#223550] bg-[#07111e]/80 px-3 text-sm text-white hover:bg-[#0b192a]"
+                      className="h-9 flex-1 rounded-lg border-[#223550] bg-[#07111e]/80 px-3 text-sm text-white hover:bg-[#0b192a] sm:flex-none"
                       onClick={handleOptimize}
                       disabled={isOptimizing}
                     >
@@ -381,7 +561,7 @@ export default function DashboardPage() {
             </div>
 
             <TooltipProvider>
-              <div className="flex items-center gap-4">
+              <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap sm:items-center sm:justify-end">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
@@ -418,7 +598,7 @@ export default function DashboardPage() {
                     <Button
                       variant="outline"
                       size="icon"
-                      className="h-9 w-12 rounded-lg border-[#223550] bg-[#07111e]/80 text-white hover:bg-[#0b192a]"
+                      className="h-9 w-full rounded-lg border-[#223550] bg-[#07111e]/80 text-white hover:bg-[#0b192a] sm:w-12"
                       onClick={handleFullscreen}
                     >
                       {isFullscreen ? (
@@ -438,14 +618,14 @@ export default function DashboardPage() {
                   disabled={isRunning}
                 >
                   <Play className="mr-2 h-4 w-4" />
-                  {isRunning ? "Running..." : "Run"}
+                  {isRunning ? "Executing..." : "Run"}
                 </Button>
               </div>
             </TooltipProvider>
           </div>
 
-          <div className="grid min-h-0 flex-1 grid-cols-[1.02fr_1fr] gap-4">
-            <div className="overflow-hidden rounded-lg border border-[#203149] bg-[#030b15]/78">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 xl:grid-cols-[1.02fr_1fr]">
+            <div className="min-h-[420px] overflow-hidden rounded-lg border border-[#203149] bg-[#030b15]/78 md:min-h-[520px] xl:min-h-0">
               <CodeEditor
                 language={language}
                 value={code}
@@ -454,19 +634,27 @@ export default function DashboardPage() {
             </div>
             <OutputPanel
               output={output}
-              stdin={stdin}
               isRunning={isRunning}
-              onStdinChange={setStdin}
+              executionStatus={executionStatus}
+              terminalOutput={terminalOutput}
+              onSendInput={handleSendInput}
               onClear={() => {
+                if (isRunning) {
+                  socket.emit(EXECUTION_EVENTS.STOP);
+                }
                 setOutput(null);
-                setStdin("");
+                setTerminalOutput("");
+                setExecutionStatus("idle");
+                setExecutionId(null);
+                setIsRunning(false);
+                activeExecutionRef.current = false;
                 setLastStdin("");
               }}
             />
           </div>
 
           {isAiPanelOpen && (
-            <div className="fixed bottom-6 right-6 top-32 z-20 w-[440px] overflow-hidden rounded-lg border border-[#223550] bg-[#050d18] shadow-2xl">
+            <div className="fixed inset-x-3 bottom-3 top-24 z-20 overflow-hidden rounded-lg border border-[#223550] bg-[#050d18] shadow-2xl sm:bottom-6 sm:left-auto sm:right-6 sm:top-32 sm:w-[440px]">
               <AiOptimizerPanel
                 result={aiResult}
                 onUseCode={setCode}
@@ -540,7 +728,7 @@ export default function DashboardPage() {
                 >
                   Link
                 </label>
-                <div className="mt-2 flex gap-2">
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <Input
                     id="share-link"
                     value={shareUrl}
